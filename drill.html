@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>演習モード</title>
+    <script src="js/jquery-3.5.1.min.js"></script>
+    <script>
+        let canvas;
+        let context;
+        let canvasRect;
+        const canvasWidth = 750;
+        const canvasHeight = 500;
+        let wordList;
+        let audioList;
+        let musicList;
+
+        const LimitTime = 10;
+        let startTime;
+        let faceImage;
+        let explosionVideo;
+        let drawTimer;
+        let question;
+        let answer;
+        let description;
+        let wrongFlag;
+        let ansTime;
+        let correctCount;
+
+        let isContinueButtonSelect;
+        let isEndButtonSelect;
+        let isTweetButtonSelect;
+        let gameOverExplosionList;
+        let explosionTimer;
+
+        $(function () {
+            canvas = $("#canvas")[0];
+            context = canvas.getContext('2d');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            canvasRect = canvas.getBoundingClientRect();
+            wordList = JSON.parse(localStorage.getItem('wordList'));
+            audioList = [null];
+            for (let i = 1; i < 8; i++) {
+                let audio = new Audio("audio/s" + i + ".wav");
+                audioList.push(audio);
+            }
+            musicList = [null];
+            for (let i = 1; i < 3; i++) {
+                let music = new Audio("audio/m" + i + ".mp3");
+                music.addEventListener("ended", function () {
+                    music.currentTime = 0;
+                    music.play();
+                }, false);
+                musicList.push(music);
+            }
+
+            nowTime = 0;
+            faceImage = new Image();
+            faceImage.src = 'img/gazou.png';
+            explosionVideo = document.createElement("video");
+            explosionVideo.setAttribute("src", "explosion.webm");
+            explosionVideo.currentTime = 0;
+            drawTimer = null;
+            question = "";
+            answer = "";
+            description = [];
+            wrongFlag = false;
+            correctCount = 0;
+
+            isContinueButtonSelect = false;
+            isEndButtonSelect = false;
+            isTweetButtonSelect = false;
+            gameOverExplosionList = [];
+            explosionTimer1 = null;
+            explosionTimer2 = null;
+
+            $("#canvas").on("mousemove", event, titleMenuMouseMove);
+            $("#canvas").on("click", event, titleMenuMouseClick);
+            titleDraw(false, false);
+        });
+
+        function titleDraw(isStartButtonSelect, isReturnButtonSelect) {
+            context.clearRect(0, 0, canvasWidth, canvasHeight);
+            context.strokeRect(0, 0, canvasWidth, canvasHeight);
+            context.font = "48px serif";
+            context.fillStyle = "black";
+            context.fillText("演習モード", 260, 200);
+            context.font = "30px serif";
+            if (!isStartButtonSelect) {
+                context.strokeRect(200, 350, 150, 50);
+            } else {
+                context.fillStyle = "gray";
+                context.fillRect(200, 350, 150, 50);
+                context.fillStyle = "white";
+            }
+            context.fillText("はじめる", 215, 385);
+
+            if (!isReturnButtonSelect) {
+                context.fillStyle = "black";
+                context.strokeRect(400, 350, 150, 50);
+            } else {
+                context.fillStyle = "gray";
+                context.fillRect(400, 350, 150, 50);
+                context.fillStyle = "white";
+            }
+            context.fillText("もどる", 430, 385);
+        }
+
+        function titleMenuMouseMove(event) {
+            canvasRect = canvas.getBoundingClientRect();
+            let isStartButtonSelect = false;
+            let isReturnButtonSelect = false;
+            if (200 + canvasRect.left <= event.clientX && event.clientX <= 350 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                isStartButtonSelect = true;
+            }
+            if (400 + canvasRect.left <= event.clientX && event.clientX <= 550 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                isReturnButtonSelect = true;
+            }
+            titleDraw(isStartButtonSelect, isReturnButtonSelect);
+        }
+
+        function titleMenuMouseClick(event) {
+            canvasRect = canvas.getBoundingClientRect();
+            if (200 + canvasRect.left <= event.clientX && event.clientX <= 350 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                if (wordList == null || wordList.length == 0) {
+                    alert("単語が登録されていないとできません．登録してきてください．");
+                    return;
+                }
+                $("#canvas").off();
+                $("#canvas").after('<textarea id="answer_textarea" rows="3" placeholder="対応する答えを入力してね" style="position: absolute; top: 325px; left: 50%; transform: translate(-50%, 0);"></textarea>');
+                $("#canvas").after('<button id="answer_button" style="position: absolute; top: 390px; left: 50%; transform: translate(-50%, 0);">決定！</button>');
+                $("#answer_button").on("click", attackToFace);
+                musicList[1].play();
+                setQuestion();
+                setStartTime();
+                drawTimer = setInterval(drawDrill, 16);
+            }
+            if (400 + canvasRect.left <= event.clientX && event.clientX <= 550 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                location.href = "index.html";
+            }
+        }
+
+        function setStartTime() {
+            startTime = Date.now();
+        }
+
+        function getNowTime() {
+            return Date.now() - startTime;
+        }
+
+        function setQuestion() {
+            let questionNumber = Math.floor(Math.random() * wordList.length);
+            question = wordList[questionNumber].word;
+            answer = wordList[questionNumber].mean;
+
+            description = ["説明"];
+            for (let i = 0; i < wordList[questionNumber].description.length / 30; i++) {
+                description.push(wordList[questionNumber].description.slice(i * 30, Math.min((i + 1) * 30, wordList[questionNumber].description.length)));
+            }
+            wrongFlag = false;
+        }
+
+        function drawDrill() {
+            context.clearRect(0, 0, canvasWidth, canvasHeight);
+            context.strokeRect(0, 0, canvasWidth, canvasHeight);
+
+            context.save();
+            let faceAngle = getNowTime() / 3;
+            let faceSize = getNowTime() / 2000;
+            let faceImageWidth = faceImage.width * faceSize;
+            let faceImageHeight = faceImage.height * faceSize;
+            context.translate(375, 230);
+            context.rotate(faceAngle * Math.PI / 180);
+            context.drawImage(faceImage, Math.floor(- faceImageWidth / 2), Math.floor(- faceImageHeight / 2), Math.floor(faceImageWidth), Math.floor(faceImageHeight));
+            context.restore();
+
+            context.font = "48px serif";
+            context.fillStyle = "black";
+            let questionWidth = context.measureText(question + "の意味を答えろ！").width;
+            context.fillText(question + "の意味を答えろ！", Math.floor(375 - questionWidth / 2), 200);
+            if (wrongFlag) {
+                context.fillStyle = "red";
+                context.fillText("違う！", 303, 140);
+            }
+
+            context.font = "30px serif";
+            context.fillStyle = "black";
+            context.fillText("残り" + Math.floor((LimitTime - getNowTime() / 1000) * 1000) / 1000 + "秒", 30, 40);
+            let nowCorrectText = "ただいまの正解数:" + correctCount + "問";
+            context.fillText(nowCorrectText, 720 - context.measureText(nowCorrectText).width, 40);
+            if (Math.floor(LimitTime - getNowTime() / 1000) < 0) {
+                gameOverStart();
+            }
+        }
+
+        function playRandomScream() {
+            // for (let i = 3; i < 6; i++) {
+            //     audioList[i].pause();
+            //     audioList[i].currentTime = 0;
+            // }
+            // audioList[Math.floor(Math.random() * 3 + 3)].play();
+            audioList[7].currentTime = 0;
+            audioList[7].play();
+        }
+
+        function attackToFace() {
+            let userAnswer = $("#answer_textarea").val();
+            if (userAnswer !== answer) {
+                wrongFlag = true;
+                audioList[2].currentTime = 0;
+                audioList[2].play();
+                return;
+            }
+            ansTime = getNowTime();
+            clearInterval(drawTimer);
+            drawTimer = setInterval(drawCorrectAnswer, 16);
+            $("#answer_button").off("click");
+            $("#answer_button").on("click", nextQuestion);
+            $("#answer_button").html("次へ！")
+            playRandomScream();
+            audioList[1].currentTime = 0;
+            audioList[1].play();
+            explosionVideo.play();
+            correctCount++;
+        }
+
+        function drawCorrectAnswer() {
+            context.clearRect(0, 0, canvasWidth, canvasHeight);
+            context.strokeRect(0, 0, canvasWidth, canvasHeight);
+
+            let videoWidth = explosionVideo.videoWidth * ansTime / 7000;
+            let videoHeight = explosionVideo.videoHeight * ansTime / 7000;
+            context.drawImage(explosionVideo, 375 - videoWidth / 2, 250 - videoHeight / 2, videoWidth, videoHeight);
+
+            context.font = "48px serif";
+            context.fillStyle = "red";
+            context.fillText("正解！", 303, 140);
+            context.font = "30px serif";
+            context.fillStyle = "black";
+            for (let i = 0; i < description.length; i++) {
+                context.fillText(description[i], Math.floor(375 - context.measureText(description[i]).width / 2), 190 + i * 35);
+            }
+            let nowCorrectText = "ただいまの正解数:" + correctCount + "問";
+            context.fillText(nowCorrectText, 720 - context.measureText(nowCorrectText).width, 40)
+            context.fillText("残り" + Math.floor((LimitTime - ansTime / 1000) * 1000) / 1000 + "秒", 30, 40);
+            context.font = "20px serif";
+            context.fillText("「次へ」ボタンをクリックしてください．", 185, 450);
+        }
+
+        function nextQuestion() {
+            clearInterval(drawTimer);
+            $("#answer_textarea").val("");
+            $("#answer_button").off("click");
+            $("#answer_button").on("click", attackToFace);
+            $("#answer_button").html("決定！");
+            explosionVideo.currentTime = 0;
+            setQuestion();
+            setStartTime();
+            drawTimer = setInterval(drawDrill, 16);
+        }
+
+        function gameOverStart() {
+            clearInterval(drawTimer);
+            $("#answer_textarea, #answer_button").remove();
+            $("#canvas").on("mousemove", event, gameOverMenuMouseMove);
+            $("#canvas").on("click", event, gameOverMenuMouseClick);
+            musicList[1].pause();
+            musicList[1].currentTime = 0;
+            musicList[2].play();
+            audioList[6].currentTime = 0;
+            audioList[6].play();
+            audioList[7].currentTime = 0;
+            audioList[7].play();
+            drawTimer = setInterval(gameOverDraw, 16);
+            explosionTimer = setInterval(addExplosion, 300);
+        }
+
+        function gameOverMenuMouseMove(event) {
+            canvasRect = canvas.getBoundingClientRect();
+            isContinueButtonSelect = false;
+            isEndButtonSelect = false;
+            isTweetButtonSelect = false;
+            if (200 + canvasRect.left <= event.clientX && event.clientX <= 350 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                isContinueButtonSelect = true;
+            }
+            if (400 + canvasRect.left <= event.clientX && event.clientX <= 550 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                isEndButtonSelect = true;
+            }
+            if (640 + canvasRect.left <= event.clientX && event.clientX <= 740 + canvasRect.left && 10 + canvasRect.top <= event.clientY && event.clientY <= 35 + canvasRect.top) {
+                isTweetButtonSelect = true;
+            }
+        }
+
+        function gameOverMenuMouseClick(event) {
+            canvasRect = canvas.getBoundingClientRect();
+            if (200 + canvasRect.left <= event.clientX && event.clientX <= 350 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                clearInterval(drawTimer);
+                clearInterval(explosionTimer);
+                gameOverExplosionList = [];
+                isContinueButtonSelect = false;
+                isEndButtonSelect = false;
+                isTweetButtonSelect = false;
+                $("#canvas").off();
+                $("#canvas").after('<textarea id="answer_textarea" rows="3" placeholder="対応する答えを入力してね" style="position: absolute; top: 325px; left: 50%; transform: translate(-50%, 0);"></textarea>');
+                $("#canvas").after('<button id="answer_button" style="position: absolute; top: 390px; left: 50%; transform: translate(-50%, 0);">決定！</button>');
+                $("#answer_button").on("click", attackToFace);
+                musicList[2].pause();
+                musicList[2].currentTime = 0;
+                musicList[1].play();
+                setQuestion();
+                setStartTime();
+                correctCount = 0;
+                drawTimer = setInterval(drawDrill, 16);
+            }
+            if (400 + canvasRect.left <= event.clientX && event.clientX <= 550 + canvasRect.left && 350 + canvasRect.top <= event.clientY && event.clientY <= 400 + canvasRect.top) {
+                location.href = "index.html";
+            }
+            if (640 + canvasRect.left <= event.clientX && event.clientX <= 740 + canvasRect.left && 10 + canvasRect.top <= event.clientY && event.clientY <= 35 + canvasRect.top) {
+                window.open("https://twitter.com/intent/tweet?text=素晴らしいことに，私は" + correctCount + "回問題に正解しました．(in いい単語帳)")
+            }
+        }
+
+        function addExplosion() {
+            if (!document.hasFocus()) {
+                return;
+            }
+            let nextVideoID = 0;
+            if (gameOverExplosionList.length !== 0) {
+                nextVideoID = gameOverExplosionList.slice(-1)[0].VideoID + 1;
+            }
+            let newVideoX = Math.floor(Math.random() * 750 - 250);
+            let newVideoY = Math.floor(Math.random() * 500 - 250);
+            let newVideo = document.createElement("video");
+            newVideo.setAttribute("src", "explosion.webm");
+            newVideo.addEventListener("ended", event => {
+                eraseExplosion(nextVideoID);
+            });
+            gameOverExplosionList.push({ VideoID: nextVideoID, Video: newVideo, X: newVideoX, Y: newVideoY });
+            gameOverExplosionList.slice(-1)[0].Video.play();
+        }
+
+        function eraseExplosion(eraseVideoID) {
+            gameOverExplosionList = gameOverExplosionList.filter(element => element.VideoID !== eraseVideoID);
+        }
+
+        function gameOverDraw() {
+            context.clearRect(0, 0, canvasWidth, canvasHeight);
+            context.strokeRect(0, 0, canvasWidth, canvasHeight);
+
+            context.save();
+            let faceAngle = getNowTime() / 3;
+            context.translate(375, 230);
+            context.rotate(faceAngle * Math.PI / 180);
+            context.drawImage(faceImage, Math.floor(- faceImage.width * 5 / 2), Math.floor(- faceImage.height * 5 / 2), Math.floor(faceImage.width * 5), Math.floor(faceImage.height * 5));
+            context.restore();
+
+            gameOverExplosionList.forEach(element => {
+                context.drawImage(element.Video, element.X, element.Y, 500, 500);
+            });
+
+            context.font = "48px serif";
+            context.fillStyle = "red";
+            context.fillText("終了！", 310, 150);
+            context.font = "30px serif";
+            context.fillStyle = "black";
+            context.fillText("残り0秒", 30, 40);
+            let ansCountText = "あなたは" + correctCount + "問正解しました";
+            context.fillText(ansCountText, Math.floor(375 - context.measureText(ansCountText).width / 2), 190);
+            let answerText = "正解は「" + answer + "」でした";
+            context.fillText(answerText, Math.floor(375 - context.measureText(answerText).width / 2), 230);
+            if (!isContinueButtonSelect) {
+                context.fillStyle = "white"
+                context.fillRect(200, 350, 150, 50);
+                context.fillStyle = "black";
+                context.strokeRect(200, 350, 150, 50);
+            } else {
+                context.fillStyle = "gray";
+                context.fillRect(200, 350, 150, 50);
+                context.fillStyle = "white";
+            }
+            context.fillText("もう一度", 215, 385);
+
+            if (!isEndButtonSelect) {
+                context.fillStyle = "white"
+                context.fillRect(400, 350, 150, 50);
+                context.fillStyle = "black";
+                context.strokeRect(400, 350, 150, 50);
+            } else {
+                context.fillStyle = "gray";
+                context.fillRect(400, 350, 150, 50);
+                context.fillStyle = "white";
+            }
+            context.fillText("おわる", 430, 385);
+
+            if (!isTweetButtonSelect) {
+                context.fillStyle = "white"
+                context.fillRect(640, 10, 100, 25);
+                context.fillStyle = "black";
+                context.strokeRect(640, 10, 100, 25);
+            } else {
+                context.fillStyle = "gray";
+                context.fillRect(640, 10, 100, 25);
+                context.fillStyle = "white";
+            }
+            context.font = "23px serif";
+            context.fillText("ツイート", 644, 30);
+        }
+
+    </script>
+</head>
+
+<body>
+    <canvas id="canvas" style="width:750px; padding:0; margin:auto; display:block;"></canvas>
+</body>
+
+</html>
